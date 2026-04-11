@@ -15,8 +15,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-score", type=float, default=None, help="Stop once score reaches this value.")
     parser.add_argument("--instrumental", action="store_true", help="Force instrumental generation.")
     parser.add_argument("--dry-run", action="store_true", help="Only plan and route skills, do not call MiniMax.")
-    parser.add_argument("--disable-clap", action="store_true", help="Disable CLAP evaluation.")
-    parser.add_argument("--disable-audiobox", action="store_true", help="Disable Audiobox evaluation.")
     return parser
 
 
@@ -25,10 +23,6 @@ def main() -> None:
     args = parser.parse_args()
 
     settings = Settings.load()
-    if args.disable_clap:
-        settings.enable_clap = False
-    if args.disable_audiobox:
-        settings.enable_audiobox = False
     if not args.dry_run:
         settings.validate_for_live_run()
     elif not settings.moonshot_api_key:

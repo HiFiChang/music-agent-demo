@@ -14,27 +14,18 @@ class AudioEvaluator:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._clap_model = None
+        self._clap_processor = None
         self._aes_predictor = None
 
     def evaluate(self, audio_path: Path, brief: PromptBrief, original_query: str) -> tuple[EvaluationResult, Path]:
-        notes: list[str] = []
         wav_path = transcode_to_wav(audio_path)
 
-        clap_mean = None
-        clap_scores: dict[str, float] = {}
-        if self.settings.enable_clap:
-            try:
-                clap_mean, clap_scores = self._evaluate_clap(wav_path, brief, original_query)
-            except Exception as exc:  # pragma: no cover - runtime backend variance
-                notes.append(f"CLAP skipped: {exc}")
+        clap_mean, clap_scores = self._evaluate_clap(wav_path, brief, original_query)
 
         aesthetic_score = None
         aesthetic_axes: dict[str, float] = {}
-        if self.settings.enable_audiobox:
-            try:
-                aesthetic_score, aesthetic_axes = self._evaluate_audiobox(wav_path)
-            except Exception as exc:  # pragma: no cover - runtime backend variance
-                notes.append(f"Audiobox skipped: {exc}")
+        if self.settings.use_audiobox:
+            aesthetic_score, aesthetic_axes = self._evaluate_audiobox(wav_path)
 
         heuristic_score, heuristics = self._evaluate_heuristics(wav_path)
 
@@ -53,7 +44,7 @@ class AudioEvaluator:
                 aesthetic_axes=aesthetic_axes,
                 heuristic_score=heuristic_score,
                 heuristics=heuristics,
-                notes=notes,
+                notes=[],
             ),
             wav_path,
         )
@@ -66,7 +57,6 @@ class AudioEvaluator:
     ) -> tuple[float, dict[str, float]]:
         if self._clap_model is None:
             from transformers import ClapModel, ClapProcessor
-            import torch
 
             model_id = "laion/clap-htsat-unfused"
             self._clap_processor = ClapProcessor.from_pretrained(model_id)
@@ -185,16 +175,15 @@ class AudioEvaluator:
 
     @staticmethod
     def _combine_scores(
-        clap_mean: float | None,
+        clap_mean: float,
         aesthetic_score: float | None,
         heuristic_score: float,
     ) -> float:
         weighted_total = 0.0
         total_weight = 0.0
 
-        if clap_mean is not None:
-            weighted_total += 0.55 * clap_mean
-            total_weight += 0.55
+        weighted_total += 0.55 * clap_mean
+        total_weight += 0.55
         if aesthetic_score is not None:
             weighted_total += 0.35 * aesthetic_score
             total_weight += 0.35

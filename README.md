@@ -6,8 +6,7 @@
 
 当前版本追求的是“先跑起来并验证闭环”，而不是完整工程化。为了减少第一次安装失败概率，环境被拆成两层：
 
-- `environment.yml`：核心 agent、Kimi、MiniMax、音频文件处理、heuristics
-- `requirements-clap.txt`：推荐安装，负责语义对齐评分
+- `environment.yml`：核心 agent + CLAP + 音频处理（默认主流程）
 - `requirements-audiobox.txt`：可选安装，负责质量/审美增强评分
 
 ## 设计目标
@@ -30,6 +29,8 @@
 - `CLAP` 负责“像不像我想要的音乐”
 - `Audiobox` 负责“音频质量和审美质量怎么样”
 - `heuristics` 负责“是不是明显坏样本”
+
+说明：当前实现默认要求 CLAP 可用（失败会直接报错，不再静默降级）。
 
 如果你后面要做更正式的 benchmark，可以在离线评测阶段额外接入 `FADtk`。
 
@@ -73,14 +74,7 @@ cp .env.example .env
 
 然后把 `.env` 里的 API key 填好。
 
-### 推荐：安装 CLAP 评分
-
-```bash
-pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cpu
-pip install -r requirements-clap.txt
-```
-
-如果你有 CUDA，可以改成 PyTorch 官方对应的 CUDA wheel。
+如果你有 CUDA，可以在该 conda 环境中安装对应 CUDA 版本的 `torch/torchaudio`。
 
 ### 可选：安装 Audiobox Aesthetics
 
@@ -88,7 +82,7 @@ pip install -r requirements-clap.txt
 pip install -r requirements-audiobox.txt
 ```
 
-如果你暂时只想验证闭环和 API 调用，不装这两层也能跑，但评分会退化为 `heuristics-only`。
+默认主流程始终包含 CLAP；若要启用 Audiobox，请先安装上述可选依赖并在 `.env` 里设置 `USE_AUDIOBOX=true`。
 
 ## 运行
 

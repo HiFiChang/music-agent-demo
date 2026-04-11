@@ -26,9 +26,7 @@ class Settings:
     audio_format: str = "mp3"
     max_iterations: int = 3
     target_score: float = 0.82
-    clap_ckpt_path: str = ""
-    enable_clap: bool = True
-    enable_audiobox: bool = True
+    use_audiobox: bool = False
 
     @classmethod
     def load(cls) -> "Settings":
@@ -46,9 +44,7 @@ class Settings:
             audio_format=os.getenv("AUDIO_FORMAT", "mp3"),
             max_iterations=int(os.getenv("MAX_ITERATIONS", "3")),
             target_score=float(os.getenv("TARGET_SCORE", "0.82")),
-            clap_ckpt_path=os.getenv("CLAP_CKPT_PATH", ""),
-            enable_clap=os.getenv("ENABLE_CLAP", "true").lower() != "false",
-            enable_audiobox=os.getenv("ENABLE_AUDIOBOX", "true").lower() != "false",
+            use_audiobox=os.getenv("USE_AUDIOBOX", "false").lower() == "true",
         )
 
     def validate_for_live_run(self) -> None:

@@ -133,9 +133,9 @@ class MusicGenerationAgent:
             brief.use_lyrics_optimizer = False
             brief.lyrics = ""
         if not brief.generation_prompt:
-            brief.generation_prompt = user_prompt
+            raise ValueError("Initial brief is missing generation_prompt.")
         if not brief.evaluation_texts:
-            brief.evaluation_texts = [brief.intent_summary or user_prompt]
+            raise ValueError("Initial brief is missing evaluation_texts.")
         return brief
 
     def refine_prompt(
@@ -184,8 +184,10 @@ class MusicGenerationAgent:
         force_instrumental: bool = False,
         dry_run: bool = False,
     ) -> dict:
-        iterations = iterations or self.settings.max_iterations
-        target_score = target_score or self.settings.target_score
+        if iterations is None:
+            iterations = self.settings.max_iterations
+        if target_score is None:
+            target_score = self.settings.target_score
 
         print(f"\n[Agent] Starting run for: '{user_prompt}'")
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
