@@ -2,11 +2,11 @@
 
 一个最小可运行的 music generation agent demo。它借鉴 `GEMS` 的核心思路，但把目标从图像改成了音乐：
 
-`user query -> skill routing -> prompt planning -> music generation -> deterministic evaluation -> prompt refinement -> loop`
+`user query -> skill routing -> prompt planning -> music generation -> checklist compilation -> validator routing -> tool-backed skill checks -> verifier agent synthesis -> prompt refinement -> loop`
 
 当前版本追求的是“先跑起来并验证闭环”，而不是完整工程化。为了减少第一次安装失败概率，环境被拆成两层：
 
-- `environment.yml`：核心 agent + CLAP + 音频处理（默认主流程）
+- `environment.yml`：核心 agent + CLAP + 音频处理（默认主流程，要求 `torch>=2.6`）
 - `requirements-audiobox.txt`：可选安装，负责质量/审美增强评分
 
 ## 设计目标
@@ -15,10 +15,20 @@
 - skill 不是 toolchain，而是 prompt augmentation module。
 - 生成端使用 MiniMax `music-2.6`。
 - 文本规划与 prompt refine 使用 Kimi `kimi-k2.5`。
-- 评估先采用可确定性的自动指标：
-- `CLAP`：评估音频和文本意图的语义对齐。
-- `Audiobox Aesthetics`：评估内容愉悦度、实用性、制作复杂度、制作质量。
-- `Basic heuristics`：时长、静音比例、响度、削波。
+- 验证不是固定打分器，而是 query-conditioned validator framework。
+- 系统先用 Kimi 把 query 和 brief 编译成自然语言 checklist。
+- 然后把每个 checklist item 路由给对应的 validation skill。
+- 每个 validation skill 目录里都带有自己的 `tool.py`，真正执行音频分析。
+- 当前 validator skills：
+- `semantic_alignment_validator`：CLAP 音频文本语义对齐
+- `tempo_checker`：BPM 估计与容差检查
+- `rhythm_pattern_checker`：节奏稳定度 / four-on-the-floor 脉冲
+- `vocal_presence_checker`：人声存在与性别倾向
+- `section_energy_checker`：副歌抬升/后段峰值
+- `tone_checker`：warm / dark / bright 等音色倾向
+- `mix_health_checker`：时长、响度、静音、削波
+- `aesthetic_quality_checker`：Audiobox Aesthetics
+- 验证结果除了总分，还会生成 `hard_failures`、`protected_checks`、`next_prompt_guidance`，直接参与下一轮 prompt refine。
 
 ## 为什么默认不用 FAD 进主循环
 
@@ -26,11 +36,12 @@
 
 因此这个 demo 的默认闭环是：
 
-- `CLAP` 负责“像不像我想要的音乐”
-- `Audiobox` 负责“音频质量和审美质量怎么样”
-- `heuristics` 负责“是不是明显坏样本”
+- `checklist compiler` 负责“这次到底要检查什么”，并且由 Kimi 做 checklist decomposition，而不是靠关键词硬匹配
+- `validator router` 负责把 checklist item 分配给最合适的 validation skill
+- `validation skill/tool.py` 负责真正跑 CLAP、librosa、Audiobox 等工具
+- `verifier agent` 负责把 check-level 结果压缩成下一轮可执行的 prompt 改写建议
 
-说明：当前实现默认要求 CLAP 可用（失败会直接报错，不再静默降级）。
+说明：当前实现默认要求 CLAP 可用。`transformers` 加载 CLAP 权重需要 `torch>=2.6`，所以环境文件已经相应提高了最低版本要求。
 
 如果你后面要做更正式的 benchmark，可以在离线评测阶段额外接入 `FADtk`。
 
@@ -60,7 +71,10 @@ music-agent-demo/
     ├── schemas.py
     ├── skill_manager.py
     ├── utils.py
-    └── skills/
+    ├── skills/
+    └── validation_skills/
+        ├── <skill>/SKILL.md
+        └── <skill>/tool.py
 ```
 
 ## 环境安装
@@ -108,9 +122,27 @@ python -m music_agent_demo.cli "电影感钢琴与弦乐，孤独、雨夜、缓
 
 每次运行会在 `runs/<timestamp-slug>/` 下生成：
 
-- `plan.json`：skill 路由与初始 brief
+- `plan.json`：skill 路由、初始 brief、validation checklist
 - `attempt_01/`, `attempt_02/`...：每轮请求、音频、评估结果
 - `summary.json`：最佳轮次、分数变化、最终 prompt
+
+## 当前验证链
+
+- `checklist compiler`
+- 用 Kimi 对 `query + brief` 做 checklist decomposition，输出自然语言检查句子。
+- 例如：`The track should stay around 100 BPM.`、`The chorus should open up clearly from the restrained verse.`
+
+- `validator router`
+- 把每个 checklist item 分派给最合适的 validation skill。
+
+- `tool-backed validation skills`
+- 每个 validation skill 在自己的 `tool.py` 中执行具体音频分析。
+- 例如：`tempo_checker/tool.py` 用 `librosa.beat.beat_track`，`semantic_alignment_validator/tool.py` 用 CLAP，`aesthetic_quality_checker/tool.py` 用 Audiobox。
+
+- `verifier agent`
+- 汇总 check-level 结果，输出失败项、已满足项保护、以及下一轮 prompt 改写建议。
+
+这比固定的 `CLAP + heuristics` 打分器更接近 `GEMS` 的思路：不是只问“总分多少”，而是先问“这首歌应该满足哪些自然语言 checklist checks”，再由 skill 内工具去验证。
 
 ## 当前简化假设
 

@@ -19,9 +19,11 @@ class SkillManager:
             content = md_path.read_text(encoding="utf-8")
             desc_match = re.search(r"## Description\n(.*?)\n## ", content, re.DOTALL)
             instr_match = re.search(r"## Instructions\n(.*)", content, re.DOTALL)
+            tool_path = md_path.parent / "tool.py"
             skills_data[skill_id] = {
                 "id": skill_id,
                 "path": str(md_path),
+                "tool_path": str(tool_path) if tool_path.exists() else "",
                 "description": desc_match.group(1).strip() if desc_match else "",
                 "instructions": instr_match.group(1).strip() if instr_match else "",
             }
@@ -35,4 +37,3 @@ class SkillManager:
 
     def get_skill(self, skill_id: str) -> dict[str, str] | None:
         return self.skills.get(skill_id)
-

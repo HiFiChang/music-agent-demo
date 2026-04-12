@@ -83,9 +83,9 @@ Return ONLY a revised generation prompt string.
 
 Rules:
 - Preserve the user's core intent.
-- Reinforce the semantic attributes that CLAP is underserving.
-- If Audiobox PQ or PC is low, clarify production and arrangement quality without bloating the prompt.
-- If heuristics suggest silence, clipping, or weak energy, ask for a fuller mix, clearer arrangement, or cleaner ending.
+- Reinforce the failing checklist items, especially hard failures.
+- Use verifier guidance and check-level evidence directly.
+- Protect already-satisfied checks to avoid regressions.
 - Remove redundant or conflicting descriptors.
 - Keep the prompt concise and generator-friendly.
 """
@@ -96,7 +96,7 @@ class MusicGenerationAgent:
         self.settings = settings
         self.llm = KimiClient(settings)
         self.music_client = MiniMaxMusicClient(settings)
-        self.evaluator = AudioEvaluator(settings)
+        self.evaluator = AudioEvaluator(settings, self.llm)
         self.skill_manager = SkillManager()
 
     def route_skill(self, user_prompt: str) -> str:
@@ -157,11 +157,12 @@ class MusicGenerationAgent:
                         f"Round {record.iteration}",
                         f"- Prompt: {record.prompt}",
                         f"- Total score: {evaluation.total_score:.4f}",
-                        f"- CLAP mean: {evaluation.clap_mean if evaluation.clap_mean is not None else 'n/a'}",
-                        f"- CLAP per text: {evaluation.clap_scores}",
-                        f"- Audiobox: {evaluation.aesthetic_axes if evaluation.aesthetic_axes else 'n/a'}",
-                        f"- Heuristics: {evaluation.heuristics}",
-                        f"- Notes: {evaluation.notes or 'none'}",
+                        f"- Validator score: {evaluation.validator_score:.4f}",
+                        f"- Hard failures: {evaluation.hard_failures or 'none'}",
+                        f"- Protected checks: {evaluation.protected_checks or 'none'}",
+                        f"- Verifier summary: {evaluation.verifier_summary or 'none'}",
+                        f"- Next guidance: {evaluation.next_prompt_guidance or 'none'}",
+                        f"- Check results: {[item.to_dict() for item in evaluation.check_results]}",
                     ]
                 )
             )
@@ -205,6 +206,9 @@ class MusicGenerationAgent:
             force_instrumental=force_instrumental,
         )
         print(f"[Agent] Initial prompt ready: {brief.generation_prompt}")
+        print("[Agent] Building validation plan...")
+        validation_plan = self.evaluator.build_validation_plan(user_prompt, brief)
+        print(f"[Agent] Validation checks: {len(validation_plan.checks)}")
 
         dump_json(
             run_dir / "plan.json",
@@ -212,6 +216,7 @@ class MusicGenerationAgent:
                 "user_prompt": user_prompt,
                 "skill_id": skill_id,
                 "brief": brief.to_dict(),
+                "validation_plan": validation_plan.to_dict(),
                 "dry_run": dry_run,
             },
         )
@@ -222,6 +227,7 @@ class MusicGenerationAgent:
                 "run_dir": str(run_dir),
                 "skill_id": skill_id,
                 "brief": brief.to_dict(),
+                "validation_plan": validation_plan.to_dict(),
                 "attempts": [],
                 "best_attempt": None,
             }
@@ -238,9 +244,19 @@ class MusicGenerationAgent:
             audio_path, _ = self.music_client.generate(current_brief, attempt_dir)
             print(f"✅ [{iteration}] Generation Complete! Saved to {audio_path.name}")
             
-            print(f"📊 [{iteration}] Evaluating audio with CLAP/Heuristics...")
-            evaluation, wav_path = self.evaluator.evaluate(audio_path, current_brief, user_prompt)
-            print(f"✅ [{iteration}] Evaluation Complete! Score: {evaluation.total_score:.4f} (CLAP: {evaluation.clap_mean}, Heuristics: {evaluation.heuristic_score:.4f})")
+            print(f"📊 [{iteration}] Running validator-agent evaluation...")
+            evaluation, wav_path = self.evaluator.evaluate(
+                audio_path,
+                current_brief,
+                user_prompt,
+                validation_plan,
+            )
+            print(f"✅ [{iteration}] Evaluation Complete! Score: {evaluation.total_score:.4f}")
+            print(f"   Validator score: {evaluation.validator_score:.4f}")
+            if evaluation.hard_failures:
+                print(f"   Hard failures: {evaluation.hard_failures}")
+            if evaluation.verifier_summary:
+                print(f"   Verifier: {evaluation.verifier_summary}")
 
             attempt = AttemptRecord(
                 iteration=iteration,
@@ -273,9 +289,9 @@ class MusicGenerationAgent:
             "run_dir": str(run_dir),
             "skill_id": skill_id,
             "brief": brief.to_dict(),
+            "validation_plan": validation_plan.to_dict(),
             "best_attempt": best_attempt.to_dict() if best_attempt else None,
             "attempts": [item.to_dict() for item in attempt_history],
         }
         dump_json(run_dir / "summary.json", summary)
         return summary
-

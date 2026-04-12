@@ -2,6 +2,20 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+import shutil
+import sys
+
+
+def _resolve_ffmpeg() -> str:
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg:
+        return ffmpeg
+
+    candidate = Path(sys.executable).resolve().parent / "ffmpeg"
+    if candidate.exists():
+        return str(candidate)
+
+    raise FileNotFoundError("ffmpeg not found in PATH or current environment bin directory.")
 
 
 def transcode_to_wav(audio_path: Path, target_sample_rate: int = 48000) -> Path:
@@ -9,9 +23,10 @@ def transcode_to_wav(audio_path: Path, target_sample_rate: int = 48000) -> Path:
         return audio_path
 
     wav_path = audio_path.with_suffix(".wav")
+    ffmpeg = _resolve_ffmpeg()
     subprocess.run(
         [
-            "ffmpeg",
+            ffmpeg,
             "-y",
             "-i",
             str(audio_path),
@@ -26,4 +41,3 @@ def transcode_to_wav(audio_path: Path, target_sample_rate: int = 48000) -> Path:
         text=True,
     )
     return wav_path
-

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import json
 from typing import Any
 
 
@@ -62,8 +63,45 @@ class PromptBrief:
 
 
 @dataclass
+class ValidationCheck:
+    check_id: str
+    text: str
+    weight: float
+    hard: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class ValidationPlan:
+    checks: list[ValidationCheck] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"checks": [item.to_dict() for item in self.checks]}
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
+
+
+@dataclass
+class ValidationCheckResult:
+    check_id: str
+    check_text: str
+    skill_id: str
+    passed: bool
+    score: float
+    summary: str
+    evidence: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class EvaluationResult:
     total_score: float
+    validator_score: float = 0.0
     clap_mean: float | None = None
     clap_scores: dict[str, float] = field(default_factory=dict)
     aesthetic_score: float | None = None
@@ -71,9 +109,17 @@ class EvaluationResult:
     heuristic_score: float = 0.0
     heuristics: dict[str, float] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    validator_skill_ids: list[str] = field(default_factory=list)
+    check_results: list[ValidationCheckResult] = field(default_factory=list)
+    verifier_summary: str = ""
+    next_prompt_guidance: list[str] = field(default_factory=list)
+    hard_failures: list[str] = field(default_factory=list)
+    protected_checks: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data["check_results"] = [item.to_dict() for item in self.check_results]
+        return data
 
 
 @dataclass
@@ -88,4 +134,3 @@ class AttemptRecord:
         data = asdict(self)
         data["evaluation"] = self.evaluation.to_dict()
         return data
-
